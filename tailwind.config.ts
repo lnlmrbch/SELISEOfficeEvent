@@ -13,8 +13,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        display: ["Orbitron", "Inter", "system-ui", "sans-serif"],
+        sans: ["Exo", "system-ui", "sans-serif"],
+        display: ["Exo", "system-ui", "sans-serif"],
       },
       boxShadow: {
         orb: "0 0 60px rgba(0,102,178,0.38), 0 0 120px rgba(124,123,127,0.2)",

@@ -66,9 +66,9 @@ export function AnimatedBackground({ exhausted }: { exhausted: boolean }) {
         floatingPills.map((pill) => (
           <motion.div
             key={pill.text}
-            className="absolute z-0 rounded-full border border-brand-white/10 bg-brand-white/[0.015] px-5 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-brand-white/[0.22] md:text-[0.78rem]"
+            className="absolute z-0 rounded-full border border-brand-white/14 bg-brand-white/[0.028] px-5 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-brand-white/[0.34] md:text-[0.78rem]"
             style={{ left: pill.left, top: pill.top }}
-            animate={{ y: [-8, 8], x: [-4, 4], opacity: [0.11, 0.17] }}
+            animate={{ y: [-8, 8], x: [-4, 4], opacity: [0.2, 0.34] }}
             transition={{ duration: pill.duration, delay: pill.delay, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
           >
             {pill.text}

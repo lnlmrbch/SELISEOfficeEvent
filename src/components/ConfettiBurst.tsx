@@ -19,7 +19,7 @@ export function ConfettiBurst({ trigger }: ConfettiBurstProps) {
   );
 
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+    <div className="pointer-events-none absolute inset-0 z-[90] overflow-hidden">
       <AnimatePresence>
         {trigger > 0 &&
           particles.map((particle) => (

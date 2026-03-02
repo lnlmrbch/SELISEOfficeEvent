@@ -1,4 +1,6 @@
 import { motion } from "framer-motion";
+import { ConfettiBurst } from "./ConfettiBurst";
+import { RollingNumberStream } from "./RollingNumberStream";
 import type { RaffleState } from "../hooks/useRaffleMachine";
 
 interface RaffleOrbProps {
@@ -6,9 +8,18 @@ interface RaffleOrbProps {
   numberText: string;
   phaseLabel: string;
   resultCountdown: number | null;
+  showRollingStream: boolean;
+  confettiTrigger: number;
 }
 
-export function RaffleOrb({ state, numberText, phaseLabel, resultCountdown }: RaffleOrbProps) {
+export function RaffleOrb({
+  state,
+  numberText,
+  phaseLabel,
+  resultCountdown,
+  showRollingStream,
+  confettiTrigger,
+}: RaffleOrbProps) {
   const isRolling = state === "rolling";
   const isExhausted = state === "exhausted";
   const isResult = state === "result";
@@ -16,7 +27,7 @@ export function RaffleOrb({ state, numberText, phaseLabel, resultCountdown }: Ra
   return (
     <div className="relative z-30 flex w-full flex-col items-center gap-4 md:gap-5">
       <motion.div
-        className="relative flex h-[18rem] w-full max-w-[34rem] items-center justify-center overflow-hidden rounded-[2rem] border border-brand-white/15 bg-brand-oxford/95 shadow-orb md:h-[21rem]"
+        className="relative flex h-[18rem] w-full max-w-[34rem] items-center justify-center overflow-visible rounded-[2rem] border border-brand-white/15 bg-brand-oxford/95 shadow-orb md:h-[21rem]"
         animate={
           isExhausted
             ? {
@@ -37,13 +48,17 @@ export function RaffleOrb({ state, numberText, phaseLabel, resultCountdown }: Ra
             : { duration: 2.8, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }
         }
       >
-        <div className="absolute left-6 top-0 h-1 w-28 rounded-b-full bg-brand-blue/90 md:w-40" />
-        <div className="absolute inset-3 rounded-[1.65rem] border border-brand-white/10" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(0,102,178,0.20),transparent_58%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent_22%,transparent_78%,rgba(255,255,255,0.03))]" />
-        <div className="absolute inset-x-0 top-1/2 h-px bg-brand-white/10" />
-        <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-brand-white/10" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(124,123,127,0.12)_45%,transparent_100%)]" />
+        <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
+          <div className="absolute left-6 top-0 h-1 w-28 rounded-b-full bg-brand-blue/90 md:w-40" />
+          <div className="absolute inset-3 rounded-[1.65rem] border border-brand-white/10" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(0,102,178,0.20),transparent_58%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent_22%,transparent_78%,rgba(255,255,255,0.03))]" />
+          <div className="absolute inset-x-0 top-1/2 h-px bg-brand-white/10" />
+          <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-brand-white/10" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(124,123,127,0.12)_45%,transparent_100%)]" />
+        </div>
+        <RollingNumberStream active={showRollingStream} />
+        <ConfettiBurst trigger={confettiTrigger} />
 
         {isExhausted ? (
           <motion.div initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} className="text-6xl md:text-7xl">
@@ -69,7 +84,7 @@ export function RaffleOrb({ state, numberText, phaseLabel, resultCountdown }: Ra
         {isResult && !isExhausted && (
           <>
             <p className="mt-2 text-2xl font-semibold text-brand-white md:text-3xl">Deine Ticketnummer</p>
-            <p className="mt-1 text-sm text-brand-white/75 md:text-base">Zeige diese Nummer am Counter.</p>
+            <p className="mt-1 text-sm text-brand-white/75 md:text-base">Halte diese bei der Auslosung bereit.</p>
             <motion.div
               className="mx-auto mt-3 flex w-full max-w-[280px] items-center justify-center gap-3 rounded-xl border border-brand-white/10 bg-brand-white/5 px-3 py-2"
               initial={{ opacity: 0, y: 6 }}
