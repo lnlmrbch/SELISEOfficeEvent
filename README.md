@@ -47,5 +47,43 @@ Edit `src/config/raffleConfig.ts`:
 The print hook is in `src/utils/printTicket.ts`.
 
 - It is called exactly once after each successful draw.
-- It currently logs to `console`.
-- Integrate your real printer logic in this function (receipt printer bridge / API).
+- It calls the local print service at `http://127.0.0.1:17890` (override via localStorage key `selise-raffle-print-service-url`).
+- It stores:
+  - `selise-raffle-last-printed`
+  - `selise-raffle-last-print-error`
+
+## Lokaler Silent Print Service (SOT)
+
+Ein lokaler Service fuer RAW ESC/POS Druck liegt unter:
+
+- `print-service/`
+
+Start:
+
+```bash
+cd print-service
+npm i
+npm run build
+npm run start
+```
+
+Der Service bietet:
+
+- `GET /health`
+- `GET /printers`
+- `POST /printer/select`
+- `POST /print`
+- `POST /test-print`
+
+## Admin Overlay (4x Tap oben links)
+
+Im versteckten Overlay sind Print-Setup und Debug enthalten:
+
+- Print Service URL lesen/aendern
+- Health Check (Connected/Disconnected)
+- Drucker laden
+- Drucker auswaehlen
+- Testdruck
+- Letzte gedruckte Nummer
+- Letzter Error
+- Mixed-Content Hinweis fuer HTTPS -> HTTP Browser-Blocker

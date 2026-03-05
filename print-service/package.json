@@ -1,0 +1,27 @@
+{
+  "name": "print-service",
+  "version": "1.0.0",
+  "description": "Local SELISE raffle RAW ESC/POS print service",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "dev": "tsc -w -p tsconfig.json"
+  },
+  "keywords": [],
+  "author": "SELISE Event Kiosk",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "esc-pos-encoder": "^3.0.0",
+    "express": "^5.2.1",
+    "printer": "^0.4.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.3.3",
+    "typescript": "^5.9.3"
+  }
+}

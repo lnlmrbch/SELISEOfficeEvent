@@ -8,6 +8,16 @@ import { RaffleOrb } from "./components/RaffleOrb";
 import { raffleConfig } from "./config/raffleConfig";
 import { useRaffleMachine } from "./hooks/useRaffleMachine";
 import { printTicket } from "./utils/printTicket";
+import {
+  PRINT_LAST_ERROR_KEY,
+  PRINT_LAST_PRINTED_KEY,
+  getPrintServiceBaseUrl,
+  healthCheck,
+  listPrinters,
+  selectPrinter,
+  setPrintServiceBaseUrl,
+  testPrint,
+} from "./utils/printServiceClient";
 
 const PHASE_TEXT = {
   start: "Ziehung startet",
@@ -15,7 +25,10 @@ const PHASE_TEXT = {
   finalize: "Nummer wird finalisiert",
   done: "Ticket bestätigt",
 };
-const PRINTED_STORAGE_KEY = "selise-raffle-latest-issued";
+const LEGACY_PRINTED_STORAGE_KEY = "selise-raffle-latest-issued";
+const SELECTED_PRINTER_STORAGE_KEY = "selise-raffle-selected-printer";
+const MIXED_CONTENT_HINT =
+  "Browser blockiert HTTP calls von HTTPS Seite. Loesung: Print Service optional als HTTPS bereitstellen oder Kiosk Policy 'Allow insecure content' fuer diese Site setzen.";
 
 function formatTicketNumber(number: number): string {
   return String(number).padStart(3, "0");
@@ -31,6 +44,15 @@ export default function App() {
   const [isSoftResetting, setIsSoftResetting] = useState<boolean>(false);
   const [isDebugOverlayOpen, setIsDebugOverlayOpen] = useState<boolean>(false);
   const [latestPrintedNumber, setLatestPrintedNumber] = useState<number | null>(null);
+  const [lastPrintError, setLastPrintError] = useState<string>("");
+  const [printServiceUrlInput, setPrintServiceUrlInput] = useState<string>("");
+  const [healthStatus, setHealthStatus] = useState<"unknown" | "connected" | "disconnected">("unknown");
+  const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
+  const [isLoadingPrinters, setIsLoadingPrinters] = useState<boolean>(false);
+  const [isSelectingPrinter, setIsSelectingPrinter] = useState<boolean>(false);
+  const [isSendingTestPrint, setIsSendingTestPrint] = useState<boolean>(false);
+  const [printers, setPrinters] = useState<string[]>([]);
+  const [selectedPrinterName, setSelectedPrinterName] = useState<string>("");
   const rafRef = useRef<number | null>(null);
   const resultCountdownIntervalRef = useRef<number | null>(null);
   const softResetTimeoutRef = useRef<number | null>(null);
@@ -74,11 +96,94 @@ export default function App() {
   }, []);
 
   const getLatestPrintedFromStorage = useCallback((): number | null => {
-    const raw = window.localStorage.getItem(PRINTED_STORAGE_KEY);
+    const raw = window.localStorage.getItem(PRINT_LAST_PRINTED_KEY) ?? window.localStorage.getItem(LEGACY_PRINTED_STORAGE_KEY);
     if (!raw) return null;
     const parsed = Number.parseInt(raw, 10);
     return Number.isFinite(parsed) ? parsed : null;
   }, []);
+
+  const getLastPrintErrorFromStorage = useCallback((): string => {
+    return window.localStorage.getItem(PRINT_LAST_ERROR_KEY) ?? "";
+  }, []);
+
+  const checkPrintServiceHealth = useCallback(
+    async (customUrl?: string) => {
+      setIsCheckingHealth(true);
+      try {
+        await healthCheck(customUrl);
+        setHealthStatus("connected");
+        setLastPrintError(getLastPrintErrorFromStorage());
+      } catch (error) {
+        setHealthStatus("disconnected");
+        const message = error instanceof Error ? error.message : "Health Check fehlgeschlagen.";
+        setLastPrintError(message);
+        window.localStorage.setItem(PRINT_LAST_ERROR_KEY, message);
+      } finally {
+        setIsCheckingHealth(false);
+      }
+    },
+    [getLastPrintErrorFromStorage],
+  );
+
+  const loadPrinters = useCallback(async () => {
+    setIsLoadingPrinters(true);
+    try {
+      const result = await listPrinters(printServiceUrlInput);
+      setPrinters(result.printers);
+      setHealthStatus("connected");
+      if (result.printers.length > 0 && !result.printers.includes(selectedPrinterName)) {
+        const saved = window.localStorage.getItem(SELECTED_PRINTER_STORAGE_KEY);
+        if (saved && result.printers.includes(saved)) {
+          setSelectedPrinterName(saved);
+        } else {
+          setSelectedPrinterName(result.printers[0] ?? "");
+        }
+      }
+      setLastPrintError(getLastPrintErrorFromStorage());
+    } catch (error) {
+      setHealthStatus("disconnected");
+      const message = error instanceof Error ? error.message : "Drucker konnten nicht geladen werden.";
+      setLastPrintError(message);
+      window.localStorage.setItem(PRINT_LAST_ERROR_KEY, message);
+    } finally {
+      setIsLoadingPrinters(false);
+    }
+  }, [getLastPrintErrorFromStorage, printServiceUrlInput, selectedPrinterName]);
+
+  const applyPrinterSelection = useCallback(async () => {
+    if (!selectedPrinterName) return;
+    setIsSelectingPrinter(true);
+    try {
+      await selectPrinter(selectedPrinterName, printServiceUrlInput);
+      window.localStorage.setItem(SELECTED_PRINTER_STORAGE_KEY, selectedPrinterName);
+      setHealthStatus("connected");
+      setLastPrintError(getLastPrintErrorFromStorage());
+    } catch (error) {
+      setHealthStatus("disconnected");
+      const message = error instanceof Error ? error.message : "Druckerwahl fehlgeschlagen.";
+      setLastPrintError(message);
+      window.localStorage.setItem(PRINT_LAST_ERROR_KEY, message);
+    } finally {
+      setIsSelectingPrinter(false);
+    }
+  }, [getLastPrintErrorFromStorage, printServiceUrlInput, selectedPrinterName]);
+
+  const sendTestPrint = useCallback(async () => {
+    setIsSendingTestPrint(true);
+    try {
+      await testPrint(printServiceUrlInput);
+      setHealthStatus("connected");
+      setLastPrintError("");
+      window.localStorage.removeItem(PRINT_LAST_ERROR_KEY);
+    } catch (error) {
+      setHealthStatus("disconnected");
+      const message = error instanceof Error ? error.message : "Testdruck fehlgeschlagen.";
+      setLastPrintError(message);
+      window.localStorage.setItem(PRINT_LAST_ERROR_KEY, message);
+    } finally {
+      setIsSendingTestPrint(false);
+    }
+  }, [printServiceUrlInput]);
 
   const runRollingSequence = useCallback(() => {
     startRolling();
@@ -127,7 +232,7 @@ export default function App() {
       setConfettiBurst((value) => value + 1);
 
       // Print hook is called exactly once per successfully drawn ticket.
-      printTicket(issuedTicket);
+      void printTicket(issuedTicket);
     };
 
     clearAnimationFrame();
@@ -227,10 +332,17 @@ export default function App() {
         cornerTapCountRef.current = 0;
         clearCornerTapReset();
         setLatestPrintedNumber(getLatestPrintedFromStorage());
+        setLastPrintError(getLastPrintErrorFromStorage());
+        const baseUrl = getPrintServiceBaseUrl();
+        setPrintServiceUrlInput(baseUrl);
+        const savedPrinter = window.localStorage.getItem(SELECTED_PRINTER_STORAGE_KEY) ?? "";
+        setSelectedPrinterName(savedPrinter);
+        setHealthStatus("unknown");
+        setPrinters([]);
         setIsDebugOverlayOpen(true);
       }
     },
-    [clearCornerTapReset, getLatestPrintedFromStorage],
+    [clearCornerTapReset, getLastPrintErrorFromStorage, getLatestPrintedFromStorage],
   );
 
   const isIdle = machine.state === "idle";
@@ -289,21 +401,107 @@ export default function App() {
           onClick={() => setIsDebugOverlayOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-brand-white/20 bg-brand-oxford px-6 py-6 text-center"
+            className="w-full max-w-2xl rounded-2xl border border-brand-white/20 bg-brand-oxford px-6 py-6 text-left"
             onClick={(event) => event.stopPropagation()}
           >
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-brand-white/70">Druckstatus</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-brand-white/70">Admin Print Setup</p>
             <p className="mt-3 text-lg text-brand-white/90">Bereits gedruckt bis Nummer</p>
-            <p className="mt-2 font-display text-6xl font-extrabold leading-none text-brand-white">
+            <p className="mt-2 text-center font-display text-6xl font-extrabold leading-none text-brand-white">
               {latestPrintedNumber != null ? formatTicketNumber(latestPrintedNumber) : "—"}
             </p>
-            <button
-              type="button"
-              className="mt-5 rounded-lg border border-brand-white/20 bg-brand-white/5 px-4 py-2 text-sm font-semibold text-brand-white"
-              onClick={() => setIsDebugOverlayOpen(false)}
-            >
-              Schliessen
-            </button>
+
+            <div className="mt-5 rounded-xl border border-brand-white/10 bg-brand-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Print Service URL</p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={printServiceUrlInput}
+                  onChange={(event) => setPrintServiceUrlInput(event.target.value)}
+                  className="w-full rounded-md border border-brand-white/20 bg-brand-oxford px-3 py-2 text-sm text-brand-white outline-none"
+                />
+                <button
+                  type="button"
+                  className="rounded-md border border-brand-white/20 bg-brand-white/10 px-3 py-2 text-xs font-semibold text-brand-white"
+                  onClick={() => {
+                    setPrintServiceBaseUrl(printServiceUrlInput);
+                    void checkPrintServiceHealth(printServiceUrlInput);
+                  }}
+                >
+                  Speichern
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-brand-white/20 bg-brand-white/10 px-3 py-2 text-xs font-semibold text-brand-white"
+                onClick={() => void checkPrintServiceHealth(printServiceUrlInput)}
+                disabled={isCheckingHealth}
+              >
+                {isCheckingHealth ? "Health Check..." : "Health Check"}
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-brand-white/20 bg-brand-white/10 px-3 py-2 text-xs font-semibold text-brand-white"
+                onClick={() => void loadPrinters()}
+                disabled={isLoadingPrinters}
+              >
+                {isLoadingPrinters ? "Lade Drucker..." : "Drucker laden"}
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-brand-white/20 bg-brand-white/10 px-3 py-2 text-xs font-semibold text-brand-white"
+                onClick={() => void applyPrinterSelection()}
+                disabled={isSelectingPrinter || !selectedPrinterName}
+              >
+                {isSelectingPrinter ? "Waehle..." : "Auswaehlen"}
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-brand-white/20 bg-brand-white/10 px-3 py-2 text-xs font-semibold text-brand-white"
+                onClick={() => void sendTestPrint()}
+                disabled={isSendingTestPrint}
+              >
+                {isSendingTestPrint ? "Drucke..." : "Testdruck"}
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-brand-white/10 bg-brand-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Health Status</p>
+              <p className="mt-1 text-sm text-brand-white">
+                {healthStatus === "connected" ? "Connected ✅" : healthStatus === "disconnected" ? "Disconnected ❌" : "Unbekannt"}
+              </p>
+
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Drucker</p>
+              <select
+                value={selectedPrinterName}
+                onChange={(event) => setSelectedPrinterName(event.target.value)}
+                className="mt-2 w-full rounded-md border border-brand-white/20 bg-brand-oxford px-3 py-2 text-sm text-brand-white outline-none"
+              >
+                <option value="">Bitte Drucker waehlen</option>
+                {printers.map((printerName) => (
+                  <option key={printerName} value={printerName}>
+                    {printerName}
+                  </option>
+                ))}
+              </select>
+
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Letzter Error</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-brand-white/80">{lastPrintError || "Kein Fehler"}</p>
+              {lastPrintError.includes("Mixed Content") || lastPrintError.includes("blocked") ? (
+                <p className="mt-2 text-xs text-brand-white/70">{MIXED_CONTENT_HINT}</p>
+              ) : null}
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                className="rounded-lg border border-brand-white/20 bg-brand-white/5 px-4 py-2 text-sm font-semibold text-brand-white"
+                onClick={() => setIsDebugOverlayOpen(false)}
+              >
+                Schliessen
+              </button>
+            </div>
           </div>
         </div>
       )}
