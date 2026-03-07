@@ -161,7 +161,7 @@ async function printRaw(sharePath: string, data: Buffer): Promise<number> {
     await new Promise<void>((resolve, reject) => {
       execFile(
         "cmd.exe",
-        ["/d", "/s", "/c", `copy /b "${tempFile}" "${normalizedShare}"`],
+        ["/d", "/c", `copy /b "${tempFile}" "${normalizedShare}"`],
         { windowsHide: true },
         (error, _stdout, stderr) => {
           if (error) {
