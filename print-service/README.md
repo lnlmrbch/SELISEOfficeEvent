@@ -6,13 +6,15 @@ Lokaler Silent-Print-Service fuer den Event-Kiosk auf dem SOT (Windows), optimie
 
 - Kein Browser-Printdialog
 - Frontend ruft lokal `127.0.0.1` auf
-- Service sendet RAW ESC/POS direkt an den gewaehlten Drucker
+- Service sendet RAW ESC/POS ueber Windows Spooler an einen lokal konfigurierten UNC-Druckerpfad
+- Keine native Node Printer Library (`printer`) mehr
 
 ## Endpoints
 
 - `GET /health` -> `{ ok: true, version: "1.0.0" }`
+- `GET /config` -> `{ ok: true, printerSharePath, printerDisplayName, eventName }`
 - `GET /printers` -> `{ ok: true, printers: string[] }`
-- `POST /printer/select` Body `{ printerName: string }`
+- `POST /printer/select` ist absichtlich deaktiviert (403), da Druckerwahl nur lokal ueber Config erfolgt
 - `POST /print` Body `{ ticketNumber: number, eventName?: string, issuedAt?: string }`
 - `POST /test-print`
 
@@ -28,15 +30,26 @@ Lokaler Silent-Print-Service fuer den Event-Kiosk auf dem SOT (Windows), optimie
 
 - Datei: `data/config.json`
 - Wird automatisch erstellt, falls nicht vorhanden
-- Speichert den ausgewaehlten Drucker:
-  - `selectedPrinterName`
+- Muss lokal gepflegt werden (nicht via Frontend):
+  - `printerSharePath` (z.B. `\\localhost\\EPSON_TM_M30`)
+  - `printerDisplayName` (nur Doku/Anzeige)
+  - `eventName` (optional, Default Header auf Bon)
 
 ## Setup (Windows / Eventbetrieb)
 
 1. EPSON TM-M30 Treiber installieren
 2. Drucker per USB verbinden und in Windows sichtbar machen
-3. Windows Druckername pruefen (muss mit `/printers` erscheinen)
-4. Cutter/Papierbreite am Geraet korrekt konfigurieren (typisch 80mm, Auto-Cut aktiv)
+3. Drucker freigeben und als UNC erreichbar machen (z.B. `\\localhost\\EPSON_TM_M30`)
+4. `data/config.json` setzen:
+
+```json
+{
+  "printerSharePath": "\\\\localhost\\\\EPSON_TM_M30",
+  "printerDisplayName": "EPSON TM-M30",
+  "eventName": "SELISE OFFICE EVENT 2026"
+}
+```
+5. Cutter/Papierbreite am Geraet korrekt konfigurieren (typisch 80mm, Auto-Cut aktiv)
 
 ## Starten
 

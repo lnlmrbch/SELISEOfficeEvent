@@ -15,8 +15,7 @@
   "dependencies": {
     "cors": "^2.8.6",
     "esc-pos-encoder": "^3.0.0",
-    "express": "^5.2.1",
-    "printer": "^0.4.0"
+    "express": "^5.2.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

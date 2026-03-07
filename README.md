@@ -70,10 +70,13 @@ npm run start
 Der Service bietet:
 
 - `GET /health`
+- `GET /config`
 - `GET /printers`
-- `POST /printer/select`
+- `POST /printer/select` (deaktiviert, Antwort 403)
 - `POST /print`
 - `POST /test-print`
+
+Druckerwahl erfolgt lokal im Service ueber `print-service/data/config.json` (`printerSharePath`), nicht ueber das Frontend.
 
 ## Admin Overlay (4x Tap oben links)
 
@@ -81,8 +84,9 @@ Im versteckten Overlay sind Print-Setup und Debug enthalten:
 
 - Print Service URL lesen/aendern
 - Health Check (Connected/Disconnected)
+- Anzeige des aktuell gesetzten `printerSharePath`
 - Drucker laden
-- Drucker auswaehlen
+- Nur Read-Only Druckerliste (keine Auswahl im Frontend)
 - Testdruck
 - Letzte gedruckte Nummer
 - Letzter Error

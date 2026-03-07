@@ -11,10 +11,10 @@ import { printTicket } from "./utils/printTicket";
 import {
   PRINT_LAST_ERROR_KEY,
   PRINT_LAST_PRINTED_KEY,
+  getServiceConfig,
   getPrintServiceBaseUrl,
   healthCheck,
   listPrinters,
-  selectPrinter,
   setPrintServiceBaseUrl,
   testPrint,
 } from "./utils/printServiceClient";
@@ -26,7 +26,6 @@ const PHASE_TEXT = {
   done: "Ticket bestätigt",
 };
 const LEGACY_PRINTED_STORAGE_KEY = "selise-raffle-latest-issued";
-const SELECTED_PRINTER_STORAGE_KEY = "selise-raffle-selected-printer";
 const MIXED_CONTENT_HINT =
   "Browser blockiert HTTP calls von HTTPS Seite. Loesung: Print Service optional als HTTPS bereitstellen oder Kiosk Policy 'Allow insecure content' fuer diese Site setzen.";
 
@@ -49,10 +48,10 @@ export default function App() {
   const [healthStatus, setHealthStatus] = useState<"unknown" | "connected" | "disconnected">("unknown");
   const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
   const [isLoadingPrinters, setIsLoadingPrinters] = useState<boolean>(false);
-  const [isSelectingPrinter, setIsSelectingPrinter] = useState<boolean>(false);
   const [isSendingTestPrint, setIsSendingTestPrint] = useState<boolean>(false);
   const [printers, setPrinters] = useState<string[]>([]);
-  const [selectedPrinterName, setSelectedPrinterName] = useState<string>("");
+  const [configuredPrinterSharePath, setConfiguredPrinterSharePath] = useState<string>("");
+  const [configuredPrinterDisplayName, setConfiguredPrinterDisplayName] = useState<string>("");
   const rafRef = useRef<number | null>(null);
   const resultCountdownIntervalRef = useRef<number | null>(null);
   const softResetTimeoutRef = useRef<number | null>(null);
@@ -106,12 +105,19 @@ export default function App() {
     return window.localStorage.getItem(PRINT_LAST_ERROR_KEY) ?? "";
   }, []);
 
+  const loadServiceConfig = useCallback(async (customUrl?: string) => {
+    const result = await getServiceConfig(customUrl);
+    setConfiguredPrinterSharePath(result.printerSharePath?.trim() ?? "");
+    setConfiguredPrinterDisplayName(result.printerDisplayName?.trim() ?? "");
+  }, []);
+
   const checkPrintServiceHealth = useCallback(
     async (customUrl?: string) => {
       setIsCheckingHealth(true);
       try {
         await healthCheck(customUrl);
         setHealthStatus("connected");
+        await loadServiceConfig(customUrl);
         setLastPrintError(getLastPrintErrorFromStorage());
       } catch (error) {
         setHealthStatus("disconnected");
@@ -122,7 +128,7 @@ export default function App() {
         setIsCheckingHealth(false);
       }
     },
-    [getLastPrintErrorFromStorage],
+    [getLastPrintErrorFromStorage, loadServiceConfig],
   );
 
   const loadPrinters = useCallback(async () => {
@@ -131,14 +137,6 @@ export default function App() {
       const result = await listPrinters(printServiceUrlInput);
       setPrinters(result.printers);
       setHealthStatus("connected");
-      if (result.printers.length > 0 && !result.printers.includes(selectedPrinterName)) {
-        const saved = window.localStorage.getItem(SELECTED_PRINTER_STORAGE_KEY);
-        if (saved && result.printers.includes(saved)) {
-          setSelectedPrinterName(saved);
-        } else {
-          setSelectedPrinterName(result.printers[0] ?? "");
-        }
-      }
       setLastPrintError(getLastPrintErrorFromStorage());
     } catch (error) {
       setHealthStatus("disconnected");
@@ -148,25 +146,7 @@ export default function App() {
     } finally {
       setIsLoadingPrinters(false);
     }
-  }, [getLastPrintErrorFromStorage, printServiceUrlInput, selectedPrinterName]);
-
-  const applyPrinterSelection = useCallback(async () => {
-    if (!selectedPrinterName) return;
-    setIsSelectingPrinter(true);
-    try {
-      await selectPrinter(selectedPrinterName, printServiceUrlInput);
-      window.localStorage.setItem(SELECTED_PRINTER_STORAGE_KEY, selectedPrinterName);
-      setHealthStatus("connected");
-      setLastPrintError(getLastPrintErrorFromStorage());
-    } catch (error) {
-      setHealthStatus("disconnected");
-      const message = error instanceof Error ? error.message : "Druckerwahl fehlgeschlagen.";
-      setLastPrintError(message);
-      window.localStorage.setItem(PRINT_LAST_ERROR_KEY, message);
-    } finally {
-      setIsSelectingPrinter(false);
-    }
-  }, [getLastPrintErrorFromStorage, printServiceUrlInput, selectedPrinterName]);
+  }, [getLastPrintErrorFromStorage, printServiceUrlInput]);
 
   const sendTestPrint = useCallback(async () => {
     setIsSendingTestPrint(true);
@@ -335,14 +315,16 @@ export default function App() {
         setLastPrintError(getLastPrintErrorFromStorage());
         const baseUrl = getPrintServiceBaseUrl();
         setPrintServiceUrlInput(baseUrl);
-        const savedPrinter = window.localStorage.getItem(SELECTED_PRINTER_STORAGE_KEY) ?? "";
-        setSelectedPrinterName(savedPrinter);
+        void loadServiceConfig(baseUrl).catch(() => {
+          setConfiguredPrinterSharePath("");
+          setConfiguredPrinterDisplayName("");
+        });
         setHealthStatus("unknown");
         setPrinters([]);
         setIsDebugOverlayOpen(true);
       }
     },
-    [clearCornerTapReset, getLastPrintErrorFromStorage, getLatestPrintedFromStorage],
+    [clearCornerTapReset, getLastPrintErrorFromStorage, getLatestPrintedFromStorage, loadServiceConfig],
   );
 
   const isIdle = machine.state === "idle";
@@ -451,14 +433,6 @@ export default function App() {
               <button
                 type="button"
                 className="rounded-md border border-brand-white/20 bg-brand-white/10 px-3 py-2 text-xs font-semibold text-brand-white"
-                onClick={() => void applyPrinterSelection()}
-                disabled={isSelectingPrinter || !selectedPrinterName}
-              >
-                {isSelectingPrinter ? "Waehle..." : "Auswaehlen"}
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-brand-white/20 bg-brand-white/10 px-3 py-2 text-xs font-semibold text-brand-white"
                 onClick={() => void sendTestPrint()}
                 disabled={isSendingTestPrint}
               >
@@ -473,18 +447,19 @@ export default function App() {
               </p>
 
               <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Drucker</p>
-              <select
-                value={selectedPrinterName}
-                onChange={(event) => setSelectedPrinterName(event.target.value)}
-                className="mt-2 w-full rounded-md border border-brand-white/20 bg-brand-oxford px-3 py-2 text-sm text-brand-white outline-none"
-              >
-                <option value="">Bitte Drucker waehlen</option>
-                {printers.map((printerName) => (
-                  <option key={printerName} value={printerName}>
-                    {printerName}
-                  </option>
-                ))}
-              </select>
+              <p className="mt-1 text-xs text-brand-white/70">
+                Auswahl ist im Frontend deaktiviert. Bitte lokal in `print-service/data/config.json` setzen.
+              </p>
+              <p className="mt-2 text-xs text-brand-white/80">
+                Config printerSharePath:{" "}
+                <span className="font-semibold text-brand-white">{configuredPrinterSharePath || "(leer)"}</span>
+              </p>
+              <p className="mt-1 text-xs text-brand-white/75">
+                Config printerDisplayName: {configuredPrinterDisplayName || "(leer)"}
+              </p>
+              <div className="mt-2 max-h-28 overflow-auto rounded-md border border-brand-white/15 bg-brand-oxford/80 px-3 py-2 text-sm text-brand-white/85">
+                {printers.length > 0 ? printers.join(" | ") : "Noch keine Drucker geladen."}
+              </div>
 
               <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Letzter Error</p>
               <p className="mt-1 whitespace-pre-wrap text-sm text-brand-white/80">{lastPrintError || "Kein Fehler"}</p>

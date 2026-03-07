@@ -1,19 +1,10 @@
 import cors from "cors";
 import express from "express";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import https from "node:https";
-
-const printer = require("printer") as {
-  getPrinters: () => Array<{ name?: string; displayName?: string; printerName?: string }>;
-  printDirect: (options: {
-    data: Buffer | string;
-    printer: string;
-    type: "RAW";
-    success: (jobId: number) => void;
-    error: (error: Error) => void;
-  }) => void;
-};
+import { execFile } from "node:child_process";
 const EscPosEncoder = require("esc-pos-encoder");
 
 const VERSION = "1.0.0";
@@ -27,7 +18,9 @@ const KEY_PATH = path.join(CERTS_DIR, "key.pem");
 const CERT_PATH = path.join(CERTS_DIR, "cert.pem");
 
 interface ServiceConfig {
-  selectedPrinterName: string | null;
+  printerSharePath: string;
+  printerDisplayName: string;
+  eventName: string;
 }
 
 interface PrintBody {
@@ -36,8 +29,9 @@ interface PrintBody {
   issuedAt?: string;
 }
 
-interface SelectPrinterBody {
-  printerName?: string;
+function withConfiguredPathError(message: string, config: ServiceConfig): string {
+  const currentValue = config.printerSharePath.trim() || "(leer)";
+  return `${message} Aktuell gesetzt: ${currentValue}`;
 }
 
 function ensureConfig(): ServiceConfig {
@@ -46,7 +40,7 @@ function ensureConfig(): ServiceConfig {
   }
 
   if (!fs.existsSync(CONFIG_PATH)) {
-    const initial: ServiceConfig = { selectedPrinterName: null };
+    const initial: ServiceConfig = { printerSharePath: "", printerDisplayName: "", eventName: "SELISE OFFICE EVENT 2026" };
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(initial, null, 2), "utf-8");
     return initial;
   }
@@ -54,9 +48,13 @@ function ensureConfig(): ServiceConfig {
   try {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
     const parsed = JSON.parse(raw) as Partial<ServiceConfig>;
-    return { selectedPrinterName: parsed.selectedPrinterName ?? null };
+    return {
+      printerSharePath: typeof parsed.printerSharePath === "string" ? parsed.printerSharePath : "",
+      printerDisplayName: typeof parsed.printerDisplayName === "string" ? parsed.printerDisplayName : "",
+      eventName: typeof parsed.eventName === "string" ? parsed.eventName : "SELISE OFFICE EVENT 2026",
+    };
   } catch {
-    const fallback: ServiceConfig = { selectedPrinterName: null };
+    const fallback: ServiceConfig = { printerSharePath: "", printerDisplayName: "", eventName: "SELISE OFFICE EVENT 2026" };
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(fallback, null, 2), "utf-8");
     return fallback;
   }
@@ -67,17 +65,6 @@ function writeConfig(next: ServiceConfig): void {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(next, null, 2), "utf-8");
-}
-
-function getPrinterNames(): string[] {
-  try {
-    const discovered = printer.getPrinters() ?? [];
-    return discovered
-      .map((item) => item.name ?? item.displayName ?? item.printerName ?? "")
-      .filter((name): name is string => name.trim().length > 0);
-  } catch {
-    return [];
-  }
 }
 
 function formatIssuedAt(issuedAt?: string): string {
@@ -112,16 +99,65 @@ function buildTicketBytes(ticketNumber: number, eventName: string, issuedAt?: st
   return Buffer.from(encoded);
 }
 
-function printRaw(printerName: string, data: Buffer): Promise<number> {
+function runPowerShell(command: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    printer.printDirect({
-      data,
-      printer: printerName,
-      type: "RAW",
-      success: (jobId) => resolve(jobId),
-      error: (error) => reject(error),
-    });
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+      { windowsHide: true },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr?.trim() || error.message));
+          return;
+        }
+        resolve(stdout);
+      },
+    );
   });
+}
+
+async function listWindowsPrinters(): Promise<string[]> {
+  if (process.platform !== "win32") return [];
+  const output = await runPowerShell("Get-Printer | Select-Object -ExpandProperty Name");
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+async function printRaw(sharePath: string, data: Buffer): Promise<number> {
+  const normalizedShare = sharePath.trim();
+  if (!normalizedShare.startsWith("\\\\")) {
+    throw new Error(
+      `printerSharePath muss als UNC Pfad gesetzt sein, z.B. \\\\localhost\\\\EPSON_TM_M30. Aktuell gesetzt: ${normalizedShare || "(leer)"}`,
+    );
+  }
+
+  const tempFile = path.join(os.tmpdir(), `selise-ticket-${Date.now()}-${Math.round(Math.random() * 10000)}.bin`);
+  fs.writeFileSync(tempFile, data);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        "cmd.exe",
+        ["/d", "/s", "/c", `copy /b "${tempFile}" "${normalizedShare}"`],
+        { windowsHide: true },
+        (error, _stdout, stderr) => {
+          if (error) {
+            reject(new Error(stderr?.trim() || error.message));
+            return;
+          }
+          resolve();
+        },
+      );
+    });
+  } finally {
+    if (fs.existsSync(tempFile)) {
+      fs.unlinkSync(tempFile);
+    }
+  }
+
+  return Date.now();
 }
 
 const app = express();
@@ -136,29 +172,31 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, version: VERSION });
 });
 
-app.get("/printers", (_req, res) => {
-  res.json({ ok: true, printers: getPrinterNames() });
+app.get("/config", (_req, res) => {
+  const config = ensureConfig();
+  res.json({
+    ok: true,
+    printerSharePath: config.printerSharePath,
+    printerDisplayName: config.printerDisplayName,
+    eventName: config.eventName,
+  });
 });
 
-app.post("/printer/select", (req, res) => {
-  const body = req.body as SelectPrinterBody;
-  const printerName = body.printerName?.trim();
-
-  if (!printerName) {
-    res.status(400).json({ ok: false, error: "printerName fehlt." });
-    return;
+app.get("/printers", async (_req, res) => {
+  try {
+    const printers = await listWindowsPrinters();
+    res.json({ ok: true, printers });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Drucker konnten nicht gelesen werden.";
+    res.status(500).json({ ok: false, error: message });
   }
+});
 
-  const printers = getPrinterNames();
-  if (!printers.includes(printerName)) {
-    res.status(404).json({ ok: false, error: "Drucker nicht gefunden." });
-    return;
-  }
-
-  const config = ensureConfig();
-  const updated: ServiceConfig = { ...config, selectedPrinterName: printerName };
-  writeConfig(updated);
-  res.json({ ok: true, selectedPrinterName: printerName });
+app.post("/printer/select", (_req, res) => {
+  res.status(403).json({
+    ok: false,
+    error: "Druckerwahl ist im Frontend deaktiviert. Bitte print-service/data/config.json lokal bearbeiten.",
+  });
 });
 
 app.post("/print", async (req, res) => {
@@ -172,16 +210,22 @@ app.post("/print", async (req, res) => {
   const safeTicketNumber = Number(ticketNumber);
 
   const config = ensureConfig();
-  if (!config.selectedPrinterName) {
-    res.status(400).json({ ok: false, error: "Kein Drucker ausgewaehlt." });
+  if (!config.printerSharePath.trim()) {
+    res.status(400).json({
+      ok: false,
+      error: withConfiguredPathError(
+        "Kein printerSharePath gesetzt. Bitte print-service/data/config.json anpassen.",
+        config,
+      ),
+    });
     return;
   }
 
-  const eventName = body.eventName?.trim() || "SELISE OFFICE EVENT 2026";
+  const eventName = body.eventName?.trim() || config.eventName || "SELISE OFFICE EVENT 2026";
 
   try {
     const payload = buildTicketBytes(safeTicketNumber, eventName, body.issuedAt);
-    const jobId = await printRaw(config.selectedPrinterName, payload);
+    const jobId = await printRaw(config.printerSharePath, payload);
     res.json({ ok: true, jobId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unbekannter Druckfehler.";
@@ -191,15 +235,21 @@ app.post("/print", async (req, res) => {
 
 app.post("/test-print", async (_req, res) => {
   const config = ensureConfig();
-  if (!config.selectedPrinterName) {
-    res.status(400).json({ ok: false, error: "Kein Drucker ausgewaehlt." });
+  if (!config.printerSharePath.trim()) {
+    res.status(400).json({
+      ok: false,
+      error: withConfiguredPathError(
+        "Kein printerSharePath gesetzt. Bitte print-service/data/config.json anpassen.",
+        config,
+      ),
+    });
     return;
   }
 
   try {
     const ticketNumber = Math.floor(Math.random() * 900) + 100;
-    const payload = buildTicketBytes(ticketNumber, "SELISE OFFICE EVENT 2026", new Date().toISOString());
-    const jobId = await printRaw(config.selectedPrinterName, payload);
+    const payload = buildTicketBytes(ticketNumber, config.eventName || "SELISE OFFICE EVENT 2026", new Date().toISOString());
+    const jobId = await printRaw(config.printerSharePath, payload);
     res.json({ ok: true, jobId, ticketNumber });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unbekannter Druckfehler.";

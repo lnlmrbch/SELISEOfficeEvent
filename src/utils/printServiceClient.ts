@@ -20,6 +20,13 @@ export interface PrinterListResponse {
   printers: string[];
 }
 
+export interface ServiceConfigResponse {
+  ok: true;
+  printerSharePath: string;
+  printerDisplayName: string;
+  eventName: string;
+}
+
 function getConfiguredBaseUrl(): string {
   const override = window.localStorage.getItem(PRINT_SERVICE_URL_KEY)?.trim();
   if (override) return override;
@@ -89,11 +96,8 @@ export async function listPrinters(customBaseUrl?: string): Promise<PrinterListR
   return requestJson<PrinterListResponse>("/printers", { method: "GET" }, customBaseUrl);
 }
 
-export async function selectPrinter(printerName: string, customBaseUrl?: string): Promise<void> {
-  await requestJson("/printer/select", {
-    method: "POST",
-    body: JSON.stringify({ printerName }),
-  }, customBaseUrl);
+export async function getServiceConfig(customBaseUrl?: string): Promise<ServiceConfigResponse> {
+  return requestJson<ServiceConfigResponse>("/config", { method: "GET" }, customBaseUrl);
 }
 
 export async function testPrint(customBaseUrl?: string): Promise<void> {
