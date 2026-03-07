@@ -34,6 +34,12 @@ function withConfiguredPathError(message: string, config: ServiceConfig): string
   return `${message} Aktuell gesetzt: ${currentValue}`;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function ensureConfig(): ServiceConfig {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -160,6 +166,14 @@ async function printRaw(sharePath: string, data: Buffer): Promise<number> {
   return Date.now();
 }
 
+async function printTwoSeparateReceipts(sharePath: string, data: Buffer): Promise<[number, number]> {
+  const firstJobId = await printRaw(sharePath, data);
+  // Small gap between jobs helps some spoolers separate both tickets reliably.
+  await delay(150);
+  const secondJobId = await printRaw(sharePath, data);
+  return [firstJobId, secondJobId];
+}
+
 const app = express();
 app.use(express.json());
 app.use(
@@ -225,8 +239,8 @@ app.post("/print", async (req, res) => {
 
   try {
     const payload = buildTicketBytes(safeTicketNumber, eventName, body.issuedAt);
-    const jobId = await printRaw(config.printerSharePath, payload);
-    res.json({ ok: true, jobId });
+    const [firstJobId, secondJobId] = await printTwoSeparateReceipts(config.printerSharePath, payload);
+    res.json({ ok: true, copies: 2, jobId: firstJobId, secondJobId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unbekannter Druckfehler.";
     res.status(500).json({ ok: false, error: message });
@@ -249,8 +263,8 @@ app.post("/test-print", async (_req, res) => {
   try {
     const ticketNumber = Math.floor(Math.random() * 900) + 100;
     const payload = buildTicketBytes(ticketNumber, config.eventName || "SELISE OFFICE EVENT 2026", new Date().toISOString());
-    const jobId = await printRaw(config.printerSharePath, payload);
-    res.json({ ok: true, jobId, ticketNumber });
+    const [firstJobId, secondJobId] = await printTwoSeparateReceipts(config.printerSharePath, payload);
+    res.json({ ok: true, copies: 2, jobId: firstJobId, secondJobId, ticketNumber });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unbekannter Druckfehler.";
     res.status(500).json({ ok: false, error: message });

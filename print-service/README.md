@@ -8,6 +8,7 @@ Lokaler Silent-Print-Service fuer den Event-Kiosk auf dem SOT (Windows), optimie
 - Frontend ruft lokal `127.0.0.1` auf
 - Service sendet RAW ESC/POS ueber Windows Spooler an einen lokal konfigurierten UNC-Druckerpfad
 - Keine native Node Printer Library (`printer`) mehr
+- Jeder Druck wird immer als 2 separate Belege ausgegeben (Abgabe + Auslosung)
 
 ## Endpoints
 
