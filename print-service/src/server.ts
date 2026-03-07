@@ -131,13 +131,28 @@ async function listWindowsPrinters(): Promise<string[]> {
     .filter((line) => line.length > 0);
 }
 
-async function printRaw(sharePath: string, data: Buffer): Promise<number> {
-  const normalizedShare = sharePath.trim();
-  if (!normalizedShare.startsWith("\\\\")) {
+function normalizeUncPrinterSharePath(rawPath: string): string {
+  const trimmed = rawPath.trim().replaceAll("/", "\\");
+  if (!trimmed.startsWith("\\\\")) {
     throw new Error(
-      `printerSharePath muss als UNC Pfad gesetzt sein, z.B. \\\\localhost\\\\EPSON_TM_M30. Aktuell gesetzt: ${normalizedShare || "(leer)"}`,
+      `printerSharePath muss als UNC Pfad gesetzt sein, z.B. \\\\localhost\\\\EPSON_TM_M30. Aktuell gesetzt: ${trimmed || "(leer)"}`,
     );
   }
+
+  // Keep the UNC prefix and collapse duplicate separators in the remaining segments.
+  const withoutPrefix = trimmed.slice(2).replace(/\\+/g, "\\");
+  const segments = withoutPrefix.split("\\").filter((segment) => segment.length > 0);
+  if (segments.length < 2) {
+    throw new Error(
+      `printerSharePath ist unvollstaendig. Erwartet: \\\\host\\\\share. Aktuell gesetzt: ${trimmed || "(leer)"}`,
+    );
+  }
+
+  return `\\\\${segments.join("\\")}`;
+}
+
+async function printRaw(sharePath: string, data: Buffer): Promise<number> {
+  const normalizedShare = normalizeUncPrinterSharePath(sharePath);
 
   const tempFile = path.join(os.tmpdir(), `selise-ticket-${Date.now()}-${Math.round(Math.random() * 10000)}.bin`);
   fs.writeFileSync(tempFile, data);
