@@ -122,6 +122,28 @@ function runPowerShell(command: string): Promise<string> {
   });
 }
 
+function runCmd(command: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "cmd.exe",
+      ["/d", "/c", command],
+      { windowsHide: true },
+      (error, stdout, stderr) => {
+        if (error) {
+          const detailed = [stderr?.trim(), stdout?.trim(), error.message].filter(Boolean).join(" | ");
+          reject(new Error(detailed));
+          return;
+        }
+        resolve({ stdout, stderr });
+      },
+    );
+  });
+}
+
+function toPowerShellLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
 async function listWindowsPrinters(): Promise<string[]> {
   if (process.platform !== "win32") return [];
   const output = await runPowerShell("Get-Printer | Select-Object -ExpandProperty Name");
@@ -158,20 +180,25 @@ async function printRaw(sharePath: string, data: Buffer): Promise<number> {
   fs.writeFileSync(tempFile, data);
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      execFile(
-        "cmd.exe",
-        ["/d", "/c", `copy /b "${tempFile}" "${normalizedShare}"`],
-        { windowsHide: true },
-        (error, _stdout, stderr) => {
-          if (error) {
-            reject(new Error(stderr?.trim() || error.message));
-            return;
-          }
-          resolve();
-        },
-      );
-    });
+    try {
+      await runCmd(`copy /b "${tempFile}" "${normalizedShare}"`);
+    } catch (cmdError) {
+      // Fallback for shell/parser edge cases on some Windows kiosk images.
+      const psCommand =
+        `$src=${toPowerShellLiteral(tempFile)}; ` +
+        `$dst=${toPowerShellLiteral(normalizedShare)}; ` +
+        "Copy-Item -LiteralPath $src -Destination $dst -Force";
+      try {
+        await runPowerShell(psCommand);
+      } catch (psError) {
+        const cmdMessage = cmdError instanceof Error ? cmdError.message : String(cmdError);
+        const psMessage = psError instanceof Error ? psError.message : String(psError);
+        throw new Error(
+          `Druck auf ${normalizedShare} fehlgeschlagen. CMD: ${cmdMessage}. PowerShell: ${psMessage}. ` +
+            "Pruefe ShareName und Freigabe (Get-Printer | Select Name,ShareName,Shared).",
+        );
+      }
+    }
   } finally {
     if (fs.existsSync(tempFile)) {
       fs.unlinkSync(tempFile);
