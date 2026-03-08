@@ -1,5 +1,7 @@
 import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import seliseLogo from "../SELISE_digital_platforms_white.svg";
+import startScreenBackground from "../img/bg.png";
 import { AnimatedBackground } from "./components/AnimatedBackground";
 import { Footer } from "./components/Footer";
 import { InstructionText } from "./components/InstructionText";
@@ -55,6 +57,7 @@ export default function App() {
   const rafRef = useRef<number | null>(null);
   const resultCountdownIntervalRef = useRef<number | null>(null);
   const softResetTimeoutRef = useRef<number | null>(null);
+  const idleRevealTimeoutRef = useRef<number | null>(null);
   const cornerTapCountRef = useRef<number>(0);
   const cornerTapResetRef = useRef<number | null>(null);
 
@@ -91,6 +94,13 @@ export default function App() {
     if (cornerTapResetRef.current !== null) {
       window.clearTimeout(cornerTapResetRef.current);
       cornerTapResetRef.current = null;
+    }
+  }, []);
+
+  const clearIdleRevealTimeout = useCallback(() => {
+    if (idleRevealTimeoutRef.current !== null) {
+      window.clearTimeout(idleRevealTimeoutRef.current);
+      idleRevealTimeoutRef.current = null;
     }
   }, []);
 
@@ -166,6 +176,8 @@ export default function App() {
   }, [printServiceUrlInput]);
 
   const runRollingSequence = useCallback(() => {
+    clearIdleRevealTimeout();
+    setIsSoftResetting(false);
     startRolling();
     setShowRollingStream(true);
     setPhaseLabel(PHASE_TEXT.start);
@@ -217,7 +229,7 @@ export default function App() {
 
     clearAnimationFrame();
     rafRef.current = requestAnimationFrame(step);
-  }, [clearAnimationFrame, issueNextTicket, rollingRange.max, rollingRange.min, setExhausted, startRolling]);
+  }, [clearAnimationFrame, clearIdleRevealTimeout, issueNextTicket, rollingRange.max, rollingRange.min, setExhausted, startRolling]);
 
   const handleTap = useCallback(() => {
     if (!canDraw || machine.state !== "idle") return;
@@ -231,6 +243,7 @@ export default function App() {
       setResultCountdown(null);
       setShowRollingStream(false);
       setIsSoftResetting(false);
+      clearIdleRevealTimeout();
     }
 
     if (machine.state === "exhausted") {
@@ -239,8 +252,9 @@ export default function App() {
       setResultCountdown(null);
       setShowRollingStream(false);
       setIsSoftResetting(false);
+      clearIdleRevealTimeout();
     }
-  }, [machine.state]);
+  }, [clearIdleRevealTimeout, machine.state]);
 
   useEffect(() => {
     if (machine.state !== "result") {
@@ -256,11 +270,15 @@ export default function App() {
           clearResultTimers();
           setIsSoftResetting(true);
           clearSoftResetTimeout();
+          clearIdleRevealTimeout();
           softResetTimeoutRef.current = window.setTimeout(() => {
             setIdle();
-            setIsSoftResetting(false);
+            idleRevealTimeoutRef.current = window.setTimeout(() => {
+              setIsSoftResetting(false);
+              idleRevealTimeoutRef.current = null;
+            }, 520);
             softResetTimeoutRef.current = null;
-          }, 460);
+          }, 760);
           return 0;
         }
         return current - 1;
@@ -293,9 +311,10 @@ export default function App() {
       clearAnimationFrame();
       clearResultTimers();
       clearSoftResetTimeout();
+      clearIdleRevealTimeout();
       clearCornerTapReset();
     };
-  }, [clearAnimationFrame, clearResultTimers, clearSoftResetTimeout, clearCornerTapReset]);
+  }, [clearAnimationFrame, clearResultTimers, clearSoftResetTimeout, clearCornerTapReset, clearIdleRevealTimeout]);
 
   const handleCornerTap = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
@@ -328,54 +347,89 @@ export default function App() {
   );
 
   const isIdle = machine.state === "idle";
+  const showIdleBackground = isIdle || isSoftResetting;
+  const sceneAnimationState = isSoftResetting ? "resetting" : isIdle ? "idle" : "active";
+
   return (
     <RaffleLayout onTap={handleTap}>
       <AnimatedBackground exhausted={machine.state === "exhausted"} />
+      <motion.div
+        className="pointer-events-none absolute inset-0 z-[2]"
+        animate={{
+          opacity: showIdleBackground ? 1 : 0,
+          scale: showIdleBackground ? 1 : 1.045,
+          filter: showIdleBackground ? "blur(0px)" : "blur(9px)",
+        }}
+        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          backgroundImage: `url(${startScreenBackground})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div className="absolute inset-0 bg-brand-oxford/62" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,31,53,0.32)_0%,rgba(0,31,53,0.74)_100%)]" />
+      </motion.div>
       <button
         type="button"
         aria-label="Debug overlay öffnen"
         onClick={handleCornerTap}
         className="absolute left-0 top-0 z-[120] h-20 w-20 cursor-default bg-transparent"
       />
-      <div
+      <motion.div
         className={`pointer-events-none absolute inset-0 z-20 bg-brand-oxford transition-opacity duration-500 ${
           isSoftResetting ? "opacity-35" : "opacity-0"
         }`}
       />
 
-      <div
-        className={`absolute inset-x-0 top-0 z-10 mt-52 flex flex-col items-center gap-2 text-center transition-all duration-500 md:mt-72 ${
-          isSoftResetting ? "translate-y-[-10px] opacity-0 blur-[3px]" : "translate-y-0 opacity-100 blur-0"
-        }`}
+      <motion.div
+        className="absolute inset-x-0 top-0 z-10 mt-52 flex flex-col items-center gap-2 text-center md:mt-72"
+        variants={{
+          idle: { y: 0, opacity: 1, filter: "blur(0px)" },
+          active: { y: -8, opacity: 0.9, filter: "blur(0px)" },
+          resetting: { y: -18, opacity: 0, filter: "blur(4px)" },
+        }}
+        animate={sceneAnimationState}
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
       >
         <h1 className="flex items-center justify-center gap-3 text-5xl font-bold tracking-tight text-brand-white md:gap-5 md:text-7xl">
+          <span>Open House @</span>
           <img src={seliseLogo} alt="SELISE" className="h-[0.95em] w-auto" />
-          <span>Raffle 2026</span>
+          <span>2026</span>
         </h1>
-        <p className="text-2xl font-medium text-brand-white/86 md:text-3xl">
-          Jetzt Nummer ziehen
-        </p>
-      </div>
+      </motion.div>
 
-      <div
-        className={`relative z-10 flex flex-1 flex-col items-center justify-center gap-10 transition-all duration-500 md:gap-12 ${
-          isSoftResetting
-            ? "translate-y-8 md:translate-y-10 opacity-0 blur-[3px]"
-            : "translate-y-10 md:translate-y-12 opacity-100 blur-0"
-        }`}
+      <motion.div
+        className="absolute inset-0 z-10"
+        variants={{
+          idle: { y: 0, opacity: 1, filter: "blur(0px)" },
+          active: { y: 0, opacity: 1, filter: "blur(0px)" },
+          resetting: { y: 20, opacity: 0, filter: "blur(4px)" },
+        }}
+        animate={sceneAnimationState}
+        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
       >
-        <RaffleOrb
-          state={machine.state}
-          numberText={displayNumber}
-          phaseLabel={phaseLabel}
-          resultCountdown={resultCountdown}
-          showRollingStream={showRollingStream}
-          confettiTrigger={confettiBurst}
-        />
-        <InstructionText state={machine.state} resultCountdown={resultCountdown} />
-      </div>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="relative flex w-full max-w-[34rem] flex-col items-center justify-center px-5 md:px-0">
+            <p className="absolute bottom-full mb-2 whitespace-nowrap text-2xl font-medium text-brand-white/86 md:mb-3 md:text-3xl">
+              Jetzt Nummer ziehen
+            </p>
+            <RaffleOrb
+              state={machine.state}
+              numberText={displayNumber}
+              phaseLabel={phaseLabel}
+              resultCountdown={resultCountdown}
+              showRollingStream={showRollingStream}
+              confettiTrigger={confettiBurst}
+            />
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 top-[calc(50%+14rem)] flex justify-center md:top-[calc(50%+16rem)]">
+          <InstructionText state={machine.state} />
+        </div>
+      </motion.div>
 
-      <Footer />
+      <Footer isIdle={isIdle} animationState={sceneAnimationState} />
 
       {isDebugOverlayOpen && (
         <div
