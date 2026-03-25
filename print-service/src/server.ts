@@ -89,8 +89,8 @@ function formatIssuedAt(issuedAt?: string): string {
 }
 
 function buildTicketBytes(ticketNumber: number, eventName: string, issuedAt?: string): Buffer {
-  // Extra feed lines prevent timestamp from being cut into the next ticket on some printers.
-  const bottomFeedLines = 6;
+  // Keep enough feed to avoid clipping, but reduce excessive whitespace.
+  const bottomFeedLines = 3;
   const separator = "-------------------------------";
   const formattedTicketNumber = String(ticketNumber).padStart(3, "0");
   const timestamp = formatIssuedAt(issuedAt);
@@ -99,7 +99,6 @@ function buildTicketBytes(ticketNumber: number, eventName: string, issuedAt?: st
   let command = encoder
     .initialize()
     .align("center")
-    .line("")
     .bold(true)
     .line(eventName.toUpperCase())
     .bold(false)
@@ -115,10 +114,6 @@ function buildTicketBytes(ticketNumber: number, eventName: string, issuedAt?: st
     .size(1, 1)
     .bold(false)
     .newline()
-    .line(separator)
-    .newline()
-    .align("center")
-    .line("Datum / Uhrzeit")
     .line(timestamp)
     .newline();
 
