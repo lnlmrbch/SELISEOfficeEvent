@@ -82,8 +82,10 @@ function formatIssuedAt(issuedAt?: string): string {
 }
 
 function buildTicketBytes(ticketNumber: number, eventName: string, issuedAt?: string): Buffer {
+  // Extra feed lines prevent timestamp from being cut into the next ticket on some printers.
+  const bottomFeedLines = 6;
   const encoder = new EscPosEncoder();
-  const encoded = encoder
+  let command = encoder
     .initialize()
     .align("center")
     .line(eventName.toUpperCase())
@@ -96,11 +98,13 @@ function buildTicketBytes(ticketNumber: number, eventName: string, issuedAt?: st
     .size(1, 1)
     .bold(false)
     .newline()
-    .line(formatIssuedAt(issuedAt))
-    .newline()
-    .newline()
-    .cut()
-    .encode();
+    .line(formatIssuedAt(issuedAt));
+
+  for (let index = 0; index < bottomFeedLines; index += 1) {
+    command = command.newline();
+  }
+
+  const encoded = command.cut().encode();
 
   return Buffer.from(encoded);
 }
