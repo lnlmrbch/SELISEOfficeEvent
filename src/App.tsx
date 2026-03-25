@@ -29,7 +29,7 @@ const PHASE_TEXT = {
 };
 const LEGACY_PRINTED_STORAGE_KEY = "selise-raffle-latest-issued";
 const MIXED_CONTENT_HINT =
-  "Browser blockiert HTTP calls von HTTPS Seite. Loesung: Print Service optional als HTTPS bereitstellen oder Kiosk Policy 'Allow insecure content' fuer diese Site setzen.";
+  "Browser blockiert HTTP-Aufrufe von HTTPS-Seite. Loesung: Print Service optional als HTTPS bereitstellen oder Kiosk-Policy 'Allow insecure content' fuer diese Site setzen.";
 
 function formatTicketNumber(number: number): string {
   return String(number).padStart(3, "0");
@@ -132,7 +132,7 @@ export default function App() {
         setLastPrintError(getLastPrintErrorFromStorage());
       } catch (error) {
         setHealthStatus("disconnected");
-        const message = error instanceof Error ? error.message : "Health Check fehlgeschlagen.";
+        const message = error instanceof Error ? error.message : "Verbindungspruefung fehlgeschlagen.";
         setLastPrintError(message);
         window.localStorage.setItem(PRINT_LAST_ERROR_KEY, message);
       } finally {
@@ -446,14 +446,14 @@ export default function App() {
             className="w-full max-w-2xl rounded-2xl border border-brand-white/20 bg-brand-oxford px-6 py-6 text-left"
             onClick={(event) => event.stopPropagation()}
           >
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-brand-white/70">Admin Print Setup</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-brand-white/70">Admin Druck-Setup</p>
             <p className="mt-3 text-lg text-brand-white/90">Bereits gedruckt bis Nummer</p>
             <p className="mt-2 text-center font-display text-6xl font-extrabold leading-none text-brand-white">
               {latestPrintedNumber != null ? formatTicketNumber(latestPrintedNumber) : "—"}
             </p>
 
             <div className="mt-5 rounded-xl border border-brand-white/10 bg-brand-white/5 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Print Service URL</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Print-Service-URL</p>
               <div className="mt-2 flex gap-2">
                 <input
                   value={printServiceUrlInput}
@@ -480,7 +480,7 @@ export default function App() {
                 onClick={() => void checkPrintServiceHealth(printServiceUrlInput)}
                 disabled={isCheckingHealth}
               >
-                {isCheckingHealth ? "Health Check..." : "Health Check"}
+                {isCheckingHealth ? "Pruefe..." : "Verbindung pruefen"}
               </button>
               <button
                 type="button"
@@ -501,9 +501,9 @@ export default function App() {
             </div>
 
             <div className="mt-4 rounded-xl border border-brand-white/10 bg-brand-white/5 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Health Status</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Verbindungsstatus</p>
               <p className="mt-1 text-sm text-brand-white">
-                {healthStatus === "connected" ? "Connected ✅" : healthStatus === "disconnected" ? "Disconnected ❌" : "Unbekannt"}
+                {healthStatus === "connected" ? "Verbunden ✅" : healthStatus === "disconnected" ? "Getrennt ❌" : "Unbekannt"}
               </p>
 
               <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Drucker</p>
@@ -521,7 +521,7 @@ export default function App() {
                 {printers.length > 0 ? printers.join(" | ") : "Noch keine Drucker geladen."}
               </div>
 
-              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Letzter Error</p>
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-brand-white/70">Letzter Fehler</p>
               <p className="mt-1 whitespace-pre-wrap text-sm text-brand-white/80">{lastPrintError || "Kein Fehler"}</p>
               {lastPrintError.includes("Mixed Content") || lastPrintError.includes("blocked") ? (
                 <p className="mt-2 text-xs text-brand-white/70">{MIXED_CONTENT_HINT}</p>

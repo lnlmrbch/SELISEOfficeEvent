@@ -29,7 +29,7 @@ export function Footer({ isIdle, animationState }: FooterProps) {
       <div className={`mx-auto flex w-full items-end gap-4 ${isIdle ? "justify-start" : "justify-between"}`}>
         {isIdle ? (
           <span className="flex flex-col items-start gap-2">
-            <span className="text-brand-white/90">Prizes provided by</span>
+            <span className="text-brand-white/90">Preise bereitgestellt von</span>
             <span className="grid grid-cols-3 gap-x-3 gap-y-3 md:gap-x-4 md:gap-y-4">
               <span className="flex h-14 w-32 items-center justify-center rounded-lg border border-brand-white/10 bg-brand-white/5 p-2.5 md:h-16 md:w-36 md:p-3">
                 <img src={bettertradeLogo} alt="bettertrade" className="max-h-full w-full object-contain opacity-95" />
@@ -55,7 +55,7 @@ export function Footer({ isIdle, animationState }: FooterProps) {
           <span>SELISE Group - Office Event 2026</span>
         )}
         <span className={`flex items-center gap-2 ${isIdle ? "absolute bottom-2.5 right-4 md:bottom-3 md:right-5" : ""}`}>
-          <span className="text-brand-white/85">Developed by</span>
+          <span className="text-brand-white/85">Entwickelt von</span>
           <img src={omLogo} alt="ORDERMONKEY" className="h-5 w-auto opacity-95 md:h-7" />
         </span>
       </div>

@@ -78,27 +78,49 @@ function formatIssuedAt(issuedAt?: string): string {
   if (Number.isNaN(date.getTime())) {
     return new Date().toLocaleString("de-CH");
   }
-  return date.toLocaleString("de-CH");
+  return date.toLocaleString("de-CH", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function buildTicketBytes(ticketNumber: number, eventName: string, issuedAt?: string): Buffer {
   // Extra feed lines prevent timestamp from being cut into the next ticket on some printers.
   const bottomFeedLines = 6;
+  const separator = "-------------------------------";
+  const formattedTicketNumber = String(ticketNumber).padStart(3, "0");
+  const timestamp = formatIssuedAt(issuedAt);
+
   const encoder = new EscPosEncoder();
   let command = encoder
     .initialize()
     .align("center")
+    .line("")
+    .bold(true)
     .line(eventName.toUpperCase())
-    .line("--------------------------------")
+    .bold(false)
+    .line(separator)
     .newline()
+    .align("center")
     .line("Deine Ticketnummer")
+    .newline()
+    .align("center")
     .bold(true)
     .size(2, 2)
-    .line(String(ticketNumber).padStart(3, "0"))
+    .line(formattedTicketNumber)
     .size(1, 1)
     .bold(false)
     .newline()
-    .line(formatIssuedAt(issuedAt));
+    .line(separator)
+    .newline()
+    .align("center")
+    .line("Datum / Uhrzeit")
+    .line(timestamp)
+    .newline();
 
   for (let index = 0; index < bottomFeedLines; index += 1) {
     command = command.newline();
