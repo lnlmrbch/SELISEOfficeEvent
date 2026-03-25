@@ -60,6 +60,7 @@ export default function App() {
   const idleRevealTimeoutRef = useRef<number | null>(null);
   const cornerTapCountRef = useRef<number>(0);
   const cornerTapResetRef = useRef<number | null>(null);
+  const drawLockRef = useRef<boolean>(false);
 
   const rollingRange = useMemo(() => {
     const max = raffleConfig.maxTickets ?? raffleConfig.startNumber + 999;
@@ -176,6 +177,8 @@ export default function App() {
   }, [printServiceUrlInput]);
 
   const runRollingSequence = useCallback(() => {
+    if (drawLockRef.current) return;
+    drawLockRef.current = true;
     clearIdleRevealTimeout();
     setIsSoftResetting(false);
     startRolling();
@@ -216,6 +219,7 @@ export default function App() {
         setDisplayNumber("—");
         setPhaseLabel("Alle Tickets wurden bereits gezogen");
         setExhausted();
+        drawLockRef.current = false;
         return;
       }
 
@@ -238,6 +242,7 @@ export default function App() {
 
   useEffect(() => {
     if (machine.state === "idle") {
+      drawLockRef.current = false;
       setDisplayNumber("---");
       setPhaseLabel("Bereit");
       setResultCountdown(null);
@@ -247,6 +252,7 @@ export default function App() {
     }
 
     if (machine.state === "exhausted") {
+      drawLockRef.current = false;
       setDisplayNumber("—");
       setPhaseLabel("Alle Tickets wurden bereits gezogen");
       setResultCountdown(null);
